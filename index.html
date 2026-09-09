@@ -125,7 +125,7 @@
     document.documentElement.style.setProperty('--bg-color', theme.bg);
     document.documentElement.style.setProperty('--passage-bg', theme.pbg);
 
-const rawQuizData = [
+    const rawQuizData = [
         { t: "استخرج", q: "في جملة (محمدٌ يقرأُ الكتابَ)، عيّن الفعل المضارع المرفوع:", opts: ["يقرأُ", "الكتابَ", "محمدٌ", "لا يوجد"], ans: "يقرأُ" },
         { t: "استخرج", q: "في جملة (لن أكسلَ في دراستي)، استخرج الفعل المضارع المنصوب:", opts: ["أكسلَ", "دراستي", "لن", "لا يوجد"], ans: "أكسلَ" },
         { t: "استخرج", q: "في جملة (الطلاب لم يهملوا دروسهم)، حدد الفعل المضارع المجزوم:", opts: ["يهملوا", "دروسهم", "الطلاب", "لم"], ans: "يهملوا" },
@@ -166,6 +166,16 @@ const rawQuizData = [
     const currentModelId = "الفعل المضارع";
     let sName, sEmail, currentIdx = 0, userScore = 0, timer, finalQuestions;
     let studentAnswersLog = [];
+
+    // قاموس ربط المهارات بالعربي إلى المعرفات الإنجليزية الخمسة
+    const skillMapping = {
+        "استخرج": "est",
+        "إكمال": "ikm",
+        "صح وخطأ": "swh",
+        "أعرب": "arb",
+        "صحح": "sah",
+        "مثل": "math"
+    };
 
     const firebaseConfig = { apiKey: "AIzaSyBkCO7FDQXd89YDf843J4_AtvEFvzzt-R0", authDomain: "aztlg-494c3.firebaseapp.com", projectId: "aztlg-494c3", storageBucket: "aztlg-494c3.firebasestorage.app", messagingSenderId: "597051893949", appId: "1:597051893949:web:de5554ac900317a92b2fd4" };
     firebase.initializeApp(firebaseConfig);
@@ -232,7 +242,8 @@ const rawQuizData = [
                     qText: data.q,
                     studentAns: o,
                     correctAns: data.ans,
-                    isCorrect: isCorrect
+                    isCorrect: isCorrect,
+                    skillType: data.t // التوجيه لقياس المهارة
                 });
 
                 document.querySelectorAll('.opt').forEach(el => {
@@ -258,7 +269,8 @@ const rawQuizData = [
                     qText: finalQuestions[currentIdx].q,
                     studentAns: "انتهى الوقت (بدون إجابة)",
                     correctAns: finalQuestions[currentIdx].ans,
-                    isCorrect: false
+                    isCorrect: false,
+                    skillType: finalQuestions[currentIdx].t
                 });
                 nextQuestion(); 
             }
@@ -296,6 +308,31 @@ const rawQuizData = [
             reviewListContainer.appendChild(reviewItem);
         });
         
+        // -------------------------------------------------------------
+        // حساب نسبة الإنجاز والتفوق لكل مهارة من الـ 6 مهارات بدقة
+        // -------------------------------------------------------------
+        let skillCounts = { est: 0, ikm: 0, swh: 0, arb: 0, sah: 0, math: 0 };
+        let skillTotals = { est: 0, ikm: 0, swh: 0, arb: 0, sah: 0, math: 0 };
+
+        studentAnswersLog.forEach(item => {
+            const key = skillMapping[item.skillType];
+            if(key) {
+                skillTotals[key]++;
+                if(item.isCorrect) skillCounts[key]++;
+            }
+        });
+
+        // تحويل درجات المهارات إلى نسب مئوية (%) لحفظها وتغذية الرسم البياني
+        let calculatedSections = {};
+        Object.keys(skillTotals).forEach(key => {
+            if(skillTotals[key] > 0) {
+                calculatedSections[key] = Math.round((skillCounts[key] / skillTotals[key]) * 100);
+            } else {
+                calculatedSections[key] = Math.round((userScore / finalQuestions.length) * 100);
+            }
+        });
+
+        // حفظ البيانات في Firebase شاملة قسم المهارات sections
         await db.collection("alkfaeat_results").add({ 
             name: sName, 
             email: sEmail, 
@@ -303,6 +340,7 @@ const rawQuizData = [
             total: finalQuestions.length, 
             model_id: currentModelId, 
             answers: studentAnswersLog,
+            sections: calculatedSections, // إرسال تحليل المهارات المنفصل للوحة التحليل
             time: firebase.firestore.FieldValue.serverTimestamp() 
         });
     }
